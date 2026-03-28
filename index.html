@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ProAudio Studio - Ultimate Final</title>
+    
+    <meta name="description" content="Professional Web DAW. Edit, apply effects, and utilize Meta Demucs AI.">
+    <meta name="theme-color" content="#020617">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- LAME.js for Local MP3 Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    
+    <!-- ONNX Runtime Web for Local AI Processing (Legacy/Fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 750: '#263344', 850: '#151e2e', 900: '#0f172a', 950: '#020617' },
+                        sky: { 450: '#0ea5e9' }
+                    },
+                    animation: {
+                        'pulse-red': 'pulseRed 1.5s infinite',
+                        'fade-out': 'fadeOut 0.5s ease-out forwards',
+                        'bounce-slow': 'bounce 3s infinite'
+                    },
+                    keyframes: {
+                        pulseRed: { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.5 } },
+                        fadeOut: { '0%': { opacity: 1 }, '100%': { opacity: 0 } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root { --px-per-sec: 50px; }
+        body { user-select: none; -webkit-user-select: none; overscroll-behavior: none; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+        /* Hardware Accelerated Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .timeline-grid {
+            background-image: linear-gradient(90deg, #1e293b 1px, transparent 1px);
+            background-size: var(--px-per-sec) 100%;
+        }
+
+        .clip {
+            position: absolute; height: 85%; top: 7.5%; background: #1e293b;
+            border: 1px solid #475569; border-radius: 6px; overflow: hidden;
+            cursor: grab; touch-action: none; transition: border 0.1s, box-shadow 0.1s;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), 0 4px 6px rgba(0,0,0,0.3);
+            will-change: left, width; 
+        }
+        .clip.selected { border: 2px solid #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.4); z-index: 10; }
+        .clip.missing { background: repeating-linear-gradient(45deg, #334155, #334155 10px, #451a1a 10px, #451a1a 20px); border-color: #ef4444; }
+
+        body.tool-razor .timeline-area { cursor: crosshair; }
+        body.tool-razor .clip { cursor: crosshair; }
+
+        /* GPU Accelerated UI */
+        #playhead-line { pointer-events: none; will-change: transform; transform: translateZ(0); }
+        #playhead-handle { will-change: transform; transform: translateZ(0); }
+        #snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background-color: #fbbf24; z-index: 60; display: none; pointer-events: none; box-shadow: 0 0 4px #fbbf24; }
+        
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #38bdf8; margin-top: -5px; cursor: pointer; border: 1px solid #0f172a; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
+        
+        .fx-group { background: #1e293b; border-radius: 8px; padding: 10px; margin-bottom: 12px; border: 1px solid #334155; }
+        .fx-group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .fx-label { font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .fx-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .fx-val { font-family: monospace; font-size: 0.65rem; color: #38bdf8; width: 30px; text-align: right; }
+        
+        .toggle-switch { position: relative; width: 24px; height: 14px; background: #334155; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+        .toggle-switch.on { background: #0ea5e9; }
+        .toggle-switch::after { content:''; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; background: white; border-radius: 50%; transition: 0.2s; }
+        .toggle-switch.on::after { left: 12px; }
+
+        /* --- PRESET ACCORDION UI MATCHING SCREENSHOT --- */
+        .preset-section-title { font-size: 0.75rem; font-weight: 800; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; margin-top: 16px; padding-left: 2px; }
+        .accordion-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 10px 12px; border-radius: 4px; font-size: 0.8rem; font-weight: 400; color: #e2e8f0; background: #1e293b; margin-bottom: 4px; transition: background 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .accordion-header:hover { background: #2a384c; }
+        .accordion-header.active { background: #1e293b; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+        .accordion-icon { width: 12px; height: 12px; transition: transform 0.2s; color: #94a3b8; }
+        .accordion-header.active .accordion-icon { transform: rotate(180deg); }
+        .accordion-body { background: #0f172a; padding: 12px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; margin-bottom: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+        
+        .fx-btn { background: transparent; color: #e2e8f0; border: none; font-size: 0.75rem; text-align: center; padding: 8px 4px; cursor: pointer; transition: color 0.2s; display: flex; align-items: center; justify-content: center; height: 100%; border-radius: 4px; }
+        .fx-btn:hover { color: #38bdf8; background: rgba(255,255,255,0.03); }
+        .fx-btn.active { color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.1); }
+    </style>
+</head>
+<body class="bg-[#0b1120] text-slate-200 h-screen flex flex-col font-sans overflow-hidden">
+
+    <!-- GLOBAL DRAG & DROP ZONE -->
+    <div id="drop-zone" class="hidden fixed inset-0 bg-slate-900/95 z-[200] flex flex-col items-center justify-center border-4 border-dashed border-sky-500 m-4 rounded-3xl backdrop-blur-md transition-all">
+        <svg class="w-24 h-24 text-sky-500 mb-6 animate-bounce-slow" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+        <h2 class="text-4xl font-black text-white tracking-tight">Drop Audio Files Here</h2>
+        <p class="text-sky-400 mt-4 text-lg font-medium flex items-center gap-2">Ready for Neural Processing</p>
+    </div>
+
+    <!-- LANDING -->
+    <div id="landing-page" class="fixed inset-0 bg-[#0b1120] z-[100] flex flex-col items-center justify-center text-center p-6 transition-opacity duration-500">
+        <div class="max-w-4xl w-full">
+            <h1 class="text-6xl font-black tracking-tighter mb-4 text-white">ProAudio <span class="text-sky-500">Ultimate</span></h1>
+            <p class="text-xl text-slate-400 mb-6">Professional Web DAW • Meta Demucs AI • Smart Editing</p>
+            <button onclick="enterStudio()" class="px-10 py-5 font-bold text-white bg-sky-600 rounded-full hover:bg-sky-500 hover:scale-105 shadow-[0_0_30px_rgba(14,165,233,0.3)] transition cursor-pointer text-lg">Enter Studio</button>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header class="h-14 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between px-3 shrink-0 z-40">
+        <div class="flex items-center gap-2 lg:gap-3">
+            <div class="font-black text-sky-500 tracking-wider flex items-center gap-1 cursor-default mr-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93 4.93 19.07"/></svg>
+                <span class="hidden md:inline">STUDIO</span>
+            </div>
+            <div class="h-6 w-px bg-slate-700 mx-1 hidden sm:block"></div>
+
+            <!-- Transport -->
+            <button id="btn-record" onclick="toggleRecord()" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center hover:bg-slate-700 transition" title="Record">
+                <div id="record-dot" class="w-3 h-3 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+            </button>
+            <button id="btn-stop" onclick="stopPlaybackFull()" class="p-2 text-slate-400 hover:text-white" title="Stop (Space)"><svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg></button>
+            <button id="btn-play" onclick="togglePlayback()" class="p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-full shadow-lg active:scale-95 transition" title="Play/Pause (Space)">
+                <svg id="icon-play" width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="icon-pause" class="hidden" width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button id="btn-loop" onclick="toggleLoop()" class="p-2 text-slate-400 hover:text-white border border-transparent rounded transition hidden sm:block" title="Loop Playback">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+            </button>
+            <div class="font-mono text-lg text-sky-400 w-28 md:w-32 text-center bg-black/40 rounded py-1 ml-1" id="time-display">00:00.00</div>
+        </div>
+
+        <div class="flex items-center gap-1.5 lg:gap-3">
+            <div class="hidden md:flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                <button onclick="changeZoom(-10)" class="p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button onclick="changeZoom(10)" class="p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+            </div>
+            <div class="hidden sm:flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                <button onclick="performUndo()" id="btn-undo" disabled class="p-2 rounded text-slate-400 hover:text-white"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
+                <button onclick="performRedo()" id="btn-redo" disabled class="p-2 rounded text-slate-400 hover:text-white"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg></button>
+            </div>
+            
+            <div class="flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                <button onclick="setTool('move')" id="tool-move" class="p-2 rounded bg-sky-600 text-white shadow-md"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 9 7-7 7 7"/><path d="M12 2v20"/></svg></button>
+                <button onclick="setTool('razor')" id="tool-razor" class="p-2 rounded text-slate-400 hover:bg-slate-700"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6 L6 18"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></button>
+                <button onclick="deleteSelected()" class="p-2 rounded text-slate-400 hover:text-red-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+
+            <label class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 md:px-3 py-2 rounded font-medium cursor-pointer transition flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="hidden md:inline">Import</span><input type="file" id="file-upload" accept="audio/*" multiple class="hidden" />
+            </label>
+            <button onclick="openExportModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-2 md:px-3 py-2 rounded font-bold transition flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span class="hidden md:inline">Export</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden bg-[#0b1120]">
+        <!-- LEFT: TRACKS & TIMELINE -->
+        <div class="flex-1 flex flex-col relative overflow-hidden">
+            <div class="h-8 bg-[#0f172a] border-b border-slate-800 flex shrink-0 relative z-20">
+                <div id="sidebar-spacer" class="w-24 md:w-48 bg-[#0f172a] border-r border-slate-800 shrink-0"></div> 
+                <div id="ruler-container" class="flex-1 relative overflow-hidden cursor-pointer group touch-none">
+                    <canvas id="ruler-canvas" class="block h-full w-full"></canvas>
+                    <div id="playhead-handle" class="absolute top-0 bottom-0 w-8 -ml-4 z-50 group-hover:bg-white/5 flex flex-col items-center cursor-ew-resize">
+                        <div class="w-px h-full bg-red-500"></div>
+                        <div class="w-4 h-4 bg-red-500 rotate-45 absolute -top-2 shadow-sm rounded-sm"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 flex overflow-hidden relative">
+                <!-- Track Headers -->
+                <div id="sidebar-container" class="w-24 md:w-48 bg-[#0f172a] border-r border-slate-800 flex flex-col overflow-hidden shrink-0 z-30 shadow-[4px_0_10px_rgba(0,0,0,0.2)]">
+                    <div id="track-headers" class="w-full min-h-full bg-[#0f172a]"></div>
+                </div>
+                <!-- Timeline -->
+                <div id="timeline-scroll" class="flex-1 overflow-auto bg-[#0b1120] relative timeline-area touch-pan-x scrollbar-thin scrollbar-thumb-slate-700">
+                    <div id="timeline-content" class="relative min-w-full h-full timeline-grid">
+                        <div id="playhead-line" class="absolute top-0 bottom-0 w-px bg-red-500 z-50 shadow-[0_0_5px_rgba(239,68,68,0.5)]"></div>
+                        <div id="snap-line"></div>
+                        <div id="tracks-container" class="relative w-full pb-32"></div>
+                        <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-slate-700 pointer-events-none p-4 text-center">
+                            <svg class="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                            <p class="text-xl font-bold opacity-50">Drag Files Anywhere to Start</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: FX PANEL -->
+        <aside id="fx-panel" class="w-80 bg-[#0f172a] border-l border-slate-800 flex flex-col overflow-hidden transition-transform duration-300 transform translate-x-full absolute right-0 top-0 bottom-0 z-40 shadow-2xl">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]">
+                <div>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Effects Rack</h2>
+                    <p id="fx-track-name" class="text-xs text-sky-400 font-mono mt-1">Select a Track</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="fx-power-btn" onclick="toggleTrackFXBypass()" class="text-[10px] uppercase font-bold px-2 py-1 rounded border border-green-500 text-green-500 hover:bg-green-500/20">ON</button>
+                    <button onclick="toggleFXPanel(null)" class="text-slate-400 hover:text-white bg-slate-800 p-1 rounded"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700" id="fx-container"></div>
+        </aside>
+    </main>
+
+    <!-- EXPORT MODAL -->
+    <div id="export-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center backdrop-blur-md p-4">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-full max-w-sm shadow-2xl">
+            <h2 class="text-2xl font-black text-white mb-2">Export Project</h2>
+            <div class="mb-4">
+                <label class="block text-slate-400 text-[10px] uppercase font-bold mb-1">Track Title</label>
+                <input type="text" id="export-title" class="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-3 text-sm outline-none mb-4" placeholder="My Masterpiece">
+                
+                <label class="block text-slate-400 text-[10px] uppercase font-bold mb-1">Processing Engine</label>
+                <select id="export-mode" class="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-3 text-sm outline-none mb-4">
+                    <option value="local">Local Browser (Standard Quality)</option>
+                    <option value="cloud">Cloud API Server (High Quality)</option>
+                </select>
+
+                <label class="block text-slate-400 text-xs uppercase font-bold mb-1">Format</label>
+                <select id="export-format" class="w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-3 outline-none">
+                    <option value="wav">WAV (Lossless)</option>
+                    <option value="flac">FLAC (Cloud Engine Only)</option>
+                    <option value="mp3">MP3 (Compressed 320kbps)</option>
+                </select>
+            </div>
+            <div class="flex gap-3 mt-8">
+                <button onclick="document.getElementById('export-modal').classList.add('hidden')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-medium transition">Cancel</button>
+                <button onclick="runExport()" class="flex-1 bg-sky-600 hover:bg-sky-500 text-white py-3 rounded-lg font-bold shadow-lg transition">Bounce & Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOADING / PROGRESS OVERLAY -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-sm">
+        <div class="animate-spin rounded-full h-14 w-14 border-t-2 border-b-2 border-sky-500 mb-6"></div>
+        <h3 id="loading-text" class="text-white text-xl font-bold tracking-wide">Processing...</h3>
+        <p id="loading-sub" class="text-slate-400 text-sm mt-2">Hardware Acceleration Active</p>
+    </div>
+
+    <!-- AI SETUP MODAL (FOR DEMUCS / SPLEETER API WARNING) -->
+    <div id="ai-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center backdrop-blur-md p-4">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-white flex items-center gap-2"><svg class="text-sky-400" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Cloud AI Processing</h2>
+            </div>
+            <p class="text-sm text-slate-300 mb-4 leading-relaxed">
+                You are about to use a state-of-the-art Neural Network to isolate the stems in this audio. This requires temporarily sending your audio track to the <strong class="text-sky-400">ProAudio API Server</strong>.
+            </p>
+            <input type="hidden" id="ai-mode-input" value="">
+            <div id="meta-sam-prompt-container" class="hidden mb-4">
+                <label class="block text-slate-400 text-[10px] uppercase font-bold mb-1">Separation Prompt (Meta SAM)</label>
+                <input type="text" id="ai-prompt-input" class="w-full bg-slate-900 border border-slate-700 text-sky-400 focus:border-sky-500 rounded-lg p-3 text-sm outline-none transition" placeholder="e.g. isolate the female vocal">
+            </div>
+            <div class="flex flex-col gap-3 mt-6">
+                <button onclick="confirmCloudAI()" class="w-full bg-sky-600 hover:bg-sky-500 text-white py-3 rounded-lg font-bold shadow-lg transition">Upload & Process</button>
+                <button onclick="cancelCloudAI()" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-bold transition">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API CONFIGURATION ---
+        const API_BASE = ''; // Uses relative path for Docker container
+
+        // --- CORE ENGINE ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let tracks =[]; let isPlaying = false; let isRecording = false; let snapEnabled = false; let loopEnabled = false;
+        let playStartTime = 0; let playHeadTime = 0; let pxPerSec = 50; let activeTool = 'move';
+        let activeSources = []; let rafId; let historyStack =[], historyIndex = -1;
+        let activeTrackNodes = {}; let currentFXTrackId = null;
+        let activePresetGroup = 'Vocal & Basic'; 
+
+        // --- PRESET DEFINITIONS ---
+        const FX_PRESETS = {
+            'Studio Sound': { eq: {on:true, low:2, mid:3, high:4}, compressor: {on:true, threshold:-20, ratio:3} },
+            'Studio Magic': { eq: {on:true, low:2, mid:-1, high:4}, compressor: {on:true, threshold:-28, ratio:5}, filter: {on:true, type:'highpass', freq:80} },
+            'Karaoke (Vocal Remover)': {}, 
+            'Vocal Presence': { eq: {on:true, low:-2, mid:5, high:2} },
+            'Broadcast Ready': { eq: {on:true, low:6, mid:0, high:3}, compressor: {on:true, threshold:-24, ratio:4} },
+            'Equalizer': { eq: {on:true, low:0, mid:0, high:0} },
+            'Compressor': { compressor: {on:true, threshold:-24, ratio:4} },
+            'Reverb': { reverb: {on:true, mix:0.4} },
+            'Delay': { delay: {on:true, time:0.3, mix:0.4} },
+            'Echo Chamber': { delay: {on:true, time:0.15, mix:0.4}, reverb: {on:true, mix:0.2} },
+            'Concert Hall': { reverb: {on:true, mix:0.6}, eq: {on:true, high:-5} },
+            'Underwater': { filter: {on:true, type:'lowpass', freq:600, q:1}, reverb: {on:true, mix:0.3} },
+            'Cave': { delay: {on:true, time:0.4, mix:0.5}, reverb: {on:true, mix:0.7} },
+            'Ghost': { reverb: {on:true, mix:0.8}, delay: {on:true, time:0.5, mix:0.4}, filter: {on:true, type:'highpass', freq:500} },
+            'Bass Boost': { eq: {on:true, low:12, mid:0, high:0} },
+            'Bright Treble': { eq: {on:true, low:-5, mid:2, high:10} },
+            'Lo-Fi': { filter: {on:true, type:'bandpass', freq:1000, q:1}, distortion: {on:true, amount:0.1} },
+            'Telephone': { filter: {on:true, type:'bandpass', freq:2000, q:2}, distortion: {on:true, amount:0.2} },
+            'Punch': { compressor: {on:true, threshold:-30, ratio:12} },
+            'Robot': { ringMod: {on:true, freq:50} },
+            'Glitchy AI': { ringMod: {on:true, freq:500}, distortion: {on:true, amount:0.5}, delay: {on:true, time:0.05, mix:0.5} },
+            'Pitch Up': { pitch: 1.25 }, 'Pitch Down': { pitch: 0.75 },
+            'Vibrato': { vibrato: {on:true, freq:5, depth:0.002} },
+            'Monster': { pitch: 0.6, distortion: {on:true, amount:0.1} },
+            'Fairy': { pitch: 1.4, reverb: {on:true, mix:0.3} },
+            'Chipmunk': { pitch: 1.6 },
+            'Demon': { pitch: 0.5, reverb: {on:true, mix:0.5}, distortion: {on:true, amount:0.2} },
+            'Giant': { pitch: 0.4, eq: {on:true, low:10} },
+            'Helium': { pitch: 1.5, eq: {on:true, high:5} },
+            'Alien': { pitch: 1.1, ringMod: {on:true, freq:10}, delay: {on:true, time:0.1, mix:0.4} },
+            'Slow Motion': { pitch: 0.5 },
+            'Cartoon Villain': { pitch: 0.8, ringMod: {on:true, freq:20}, distortion: {on:true, amount:0.05} }
+        };
+
+        const PRESET_GROUPS =[
+            { name: "Vocal & Basic", items:['Studio Magic', 'Karaoke (Vocal Remover)', 'Broadcast Ready', 'Compressor', 'Equalizer', 'Studio Sound', 'Vocal Presence'] },
+            { name: "Atmosphere", items:['Reverb', 'Delay', 'Echo Chamber', 'Concert Hall', 'Underwater', 'Cave', 'Ghost'] },
+            { name: "Character Voice", items:['Robot', 'Demon', 'Chipmunk', 'Monster', 'Fairy', 'Giant', 'Alien'] },
+            { name: "Creative & Fun", items:['Pitch Up', 'Pitch Down', 'Slow Motion', 'Vibrato', 'Glitchy AI', 'Telephone', 'Lo-Fi', 'Bass Boost', 'Bright Treble', 'Punch', 'Cartoon Villain'] }
+        ];
+
+        let reverbImpulse = null;
+        (function initImpulse() {
+            const len = audioCtx.sampleRate * 3.0; const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+            for(let c=0; c<2; c++){ const ch = buf.getChannelData(c); for(let i=0; i<len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/len, 3); }
+            reverbImpulse = buf;
+        })();
+
+        // --- DOM ---
+        const timelineScroll = document.getElementById('timeline-scroll'); const timelineContent = document.getElementById('timeline-content');
+        const tracksContainer = document.getElementById('tracks-container'); const trackHeaders = document.getElementById('track-headers');
+        const rulerCanvas = document.getElementById('ruler-canvas'); const playheadLine = document.getElementById('playhead-line');
+        const playheadHandle = document.getElementById('playhead-handle'); const timeDisplay = document.getElementById('time-display');
+        const snapLine = document.getElementById('snap-line'); const fxPanel = document.getElementById('fx-panel'); const dropZone = document.getElementById('drop-zone');
+        const overlay = document.getElementById('loading-overlay'); const overlayText = document.getElementById('loading-text'); const overlaySub = document.getElementById('loading-sub');
+
+        // --- DRAG AND DROP ---
+        document.body.addEventListener('dragover', (e) => { e.preventDefault(); if(document.getElementById('landing-page').style.display !== 'none') return; dropZone.classList.remove('hidden'); });
+        document.body.addEventListener('dragleave', (e) => { e.preventDefault(); if (e.relatedTarget === null) dropZone.classList.add('hidden'); });
+        document.body.addEventListener('drop', async (e) => { e.preventDefault(); dropZone.classList.add('hidden'); if (e.dataTransfer.files.length > 0) await processFiles(e.dataTransfer.files); });
+
+        // --- TRACK MODEL ---
+        function createTrackModel(name, buffer, sourceName) {
+            return {
+                id: 't' + Date.now() + Math.random().toString(36).slice(2),
+                name: name.replace(/\.[^/.]+$/, "").substring(0,15),
+                vol: 1.0, pan: 0, muted: false, solo: false,
+                clips: buffer ?[{ id: 'c' + Math.random().toString(36).slice(2), buffer: buffer, start: 0, offset: 0, duration: buffer.duration, selected: false, sourceName: sourceName }] :[],
+                fxBypass: false,
+                fx: {
+                    preset: 'None', pitch: 1.0, 
+                    vocalRemove: { mode: 'off' },
+                    eq: { on: false, low: 0, mid: 0, high: 0 }, compressor: { on: false, threshold: -24, ratio: 4 },
+                    delay: { on: false, time: 0.3, mix: 0.4 }, reverb: { on: false, mix: 0.3 }, distortion: { on: false, amount: 0 },
+                    filter: { on: false, type: 'lowpass', freq: 1000, q: 1 }, ringMod: { on: false, freq: 50 }, vibrato: { on: false, freq: 5, depth: 0.002 }
+                }
+            };
+        }
+
+        // --- AUDIO GRAPH ENGINE ---
+        function createTrackGraph(ctx, track, destination) {
+            const input = ctx.createGain(); let current = input; const nodes = {};
+            if(track.fxBypass) { const p = ctx.createStereoPanner(); p.pan.value = track.pan; const v = ctx.createGain(); v.gain.value = track.muted ? 0 : track.vol; input.connect(p); p.connect(v); v.connect(destination); nodes.panner=p; nodes.vol=v; return { input, nodes }; }
+
+            // VOCAL REMOVAL: Quick Mode (Realtime DSP Crossover)
+            if(track.fx.vocalRemove.mode === 'quick') {
+                const splitter = ctx.createChannelSplitter(2); current.connect(splitter);
+                const gainL = ctx.createGain(); gainL.gain.value = 0.5; const gainR = ctx.createGain(); gainR.gain.value = 0.5;
+                splitter.connect(gainL, 0); splitter.connect(gainR, 1);
+                const mid = ctx.createGain(); gainL.connect(mid); gainR.connect(mid);
+                const side = ctx.createGain(); const invR = ctx.createGain(); invR.gain.value = -1;
+                gainL.connect(side); gainR.connect(invR); invR.connect(side);
+
+                const midBass = ctx.createBiquadFilter(); midBass.type = "lowpass"; midBass.frequency.value = 120;
+                const midTreble = ctx.createBiquadFilter(); midTreble.type = "highpass"; midTreble.frequency.value = 6000;
+                mid.connect(midBass); mid.connect(midTreble);
+                const newMid = ctx.createGain(); midBass.connect(newMid); midTreble.connect(newMid);
+
+                const outL = ctx.createGain(); const outR = ctx.createGain();
+                newMid.connect(outL); side.connect(outL);
+                const invSide = ctx.createGain(); invSide.gain.value = -1; side.connect(invSide);
+                newMid.connect(outR); invSide.connect(outR);
+
+                const merger = ctx.createChannelMerger(2); outL.connect(merger, 0, 0); outR.connect(merger, 0, 1);
+                const makeupGain = ctx.createGain(); makeupGain.gain.value = 1.4; merger.connect(makeupGain); current = makeupGain;
+            }
+
+            const ringIn = ctx.createGain(), ringOut = ctx.createGain(); current.connect(ringIn);
+            if(track.fx.ringMod.on) { const osc = ctx.createOscillator(); osc.frequency.value = track.fx.ringMod.freq; const oscAmp = ctx.createGain(); osc.connect(oscAmp); oscAmp.connect(ringIn.gain); osc.start(); }
+            ringIn.connect(ringOut); current = ringOut;
+
+            const dist = ctx.createWaveShaper(); if(track.fx.distortion.on && track.fx.distortion.amount > 0) { dist.curve = makeDistortionCurve(track.fx.distortion.amount * 100); } else dist.curve = null;
+            nodes.dist = dist; current.connect(dist); current = dist;
+
+            const filter = ctx.createBiquadFilter(); if(track.fx.filter.on) { filter.type = track.fx.filter.type; filter.frequency.value = track.fx.filter.freq; filter.Q.value = track.fx.filter.q; } else filter.type = "allpass"; 
+            nodes.filter = filter; current.connect(filter); current = filter;
+
+            const low = ctx.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 320; const mid = ctx.createBiquadFilter(); mid.type = "peaking"; mid.frequency.value = 1000; const high = ctx.createBiquadFilter(); high.type = "highshelf"; high.frequency.value = 3200;
+            low.gain.value = track.fx.eq.on ? track.fx.eq.low : 0; mid.gain.value = track.fx.eq.on ? track.fx.eq.mid : 0; high.gain.value = track.fx.eq.on ? track.fx.eq.high : 0;
+            nodes.eqLow = low; nodes.eqMid = mid; nodes.eqHigh = high; current.connect(low); low.connect(mid); mid.connect(high); current = high;
+
+            const comp = ctx.createDynamicsCompressor(); if(track.fx.compressor.on) { comp.threshold.value = track.fx.compressor.threshold; comp.ratio.value = track.fx.compressor.ratio; } else { comp.threshold.value = 0; comp.ratio.value = 1; }
+            nodes.comp = comp; current.connect(comp); current = comp;
+
+            const delayIn = ctx.createGain(), delayNode = ctx.createDelay(), delayFb = ctx.createGain(), delayWet = ctx.createGain(); delayNode.delayTime.value = track.fx.delay.time; delayFb.gain.value = 0.4; delayWet.gain.value = track.fx.delay.on ? track.fx.delay.mix : 0; current.connect(delayIn); delayIn.connect(delayNode); delayNode.connect(delayFb); delayFb.connect(delayNode); delayNode.connect(delayWet); const delayMerge = ctx.createGain(); current.connect(delayMerge); delayWet.connect(delayMerge); current = delayMerge; nodes.delayWet = delayWet;
+
+            const verbIn = ctx.createGain(), verbNode = ctx.createConvolver(), verbWet = ctx.createGain(); verbNode.buffer = reverbImpulse; verbWet.gain.value = track.fx.reverb.on ? track.fx.reverb.mix : 0; current.connect(verbIn); verbIn.connect(verbNode); verbNode.connect(verbWet); const verbMerge = ctx.createGain(); current.connect(verbMerge); verbWet.connect(verbMerge); current = verbMerge; nodes.verbWet = verbWet;
+
+            const panner = ctx.createStereoPanner(); panner.pan.value = track.pan; nodes.panner = panner;
+            const vol = ctx.createGain(); vol.gain.value = track.muted ? 0 : track.vol; nodes.vol = vol; current.connect(panner); panner.connect(vol); vol.connect(destination);
+
+            return { input, nodes };
+        }
+
+        function makeDistortionCurve(amount) { const k = typeof amount === 'number' ? amount : 50, n_samples = 44100, curve = new Float32Array(n_samples), deg = Math.PI / 180; for (let i = 0; i < n_samples; ++i) { let x = i * 2 / n_samples - 1; curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x)); } return curve; }
+
+        function updateLiveParams(trackId) {
+            const live = activeTrackNodes[trackId]; const data = tracks.find(t => t.id === trackId); if(!live || !data || data.fxBypass) return; const nodes = live.nodes;
+            nodes.vol.gain.setTargetAtTime(data.muted ? 0 : data.vol, audioCtx.currentTime, 0.05); nodes.panner.pan.setTargetAtTime(data.pan, audioCtx.currentTime, 0.05);
+            nodes.eqLow.gain.setTargetAtTime(data.fx.eq.on ? data.fx.eq.low : 0, audioCtx.currentTime, 0.1); nodes.eqMid.gain.setTargetAtTime(data.fx.eq.on ? data.fx.eq.mid : 0, audioCtx.currentTime, 0.1); nodes.eqHigh.gain.setTargetAtTime(data.fx.eq.on ? data.fx.eq.high : 0, audioCtx.currentTime, 0.1);
+            if(data.fx.filter.on) { nodes.filter.type = data.fx.filter.type; nodes.filter.frequency.setTargetAtTime(data.fx.filter.freq, audioCtx.currentTime, 0.1); nodes.filter.Q.value = data.fx.filter.q; } else nodes.filter.type = "allpass";
+            nodes.dist.curve = (data.fx.distortion.on && data.fx.distortion.amount > 0) ? makeDistortionCurve(data.fx.distortion.amount*100) : null;
+            nodes.comp.threshold.setTargetAtTime(data.fx.compressor.on ? data.fx.compressor.threshold : 0, audioCtx.currentTime, 0.1); nodes.comp.ratio.setTargetAtTime(data.fx.compressor.on ? data.fx.compressor.ratio : 1, audioCtx.currentTime, 0.1);
+            nodes.delayWet.gain.setTargetAtTime(data.fx.delay.on ? data.fx.delay.mix : 0, audioCtx.currentTime, 0.1); nodes.verbWet.gain.setTargetAtTime(data.fx.reverb.on ? data.fx.reverb.mix : 0, audioCtx.currentTime, 0.1);
+        }
+
+        // --- PLAYBACK ---
+        async function startPlayback() {
+            if(audioCtx.state === 'suspended') await audioCtx.resume(); activeSources =[]; activeTrackNodes = {}; isPlaying = true; playStartTime = audioCtx.currentTime;
+            document.getElementById('icon-play').classList.add('hidden'); document.getElementById('icon-pause').classList.remove('hidden');
+
+            tracks.forEach(t => {
+                const graph = createTrackGraph(audioCtx, t, audioCtx.destination); activeTrackNodes[t.id] = graph; 
+                t.clips.forEach(c => {
+                    if(!c.buffer) return; const end = c.start + c.duration;
+                    if(end > playHeadTime) {
+                        const src = audioCtx.createBufferSource(); src.buffer = c.buffer; src.playbackRate.value = t.fx.pitch; 
+                        if(t.fx.vibrato.on) { const lfo = audioCtx.createOscillator(); lfo.frequency.value = t.fx.vibrato.freq; const lfoGain = audioCtx.createGain(); lfoGain.gain.value = t.fx.vibrato.depth * 1000; lfo.connect(lfoGain); lfoGain.connect(src.detune); lfo.start(); }
+                        src.connect(graph.input); let when = 0, off = 0, dur = 0;
+                        if(c.start >= playHeadTime) { when = c.start - playHeadTime; off = c.offset; dur = c.duration; } else { const played = (playHeadTime - c.start) * t.fx.pitch; off = c.offset + played; dur = c.duration - played; }
+                        if(dur > 0) { src.start(audioCtx.currentTime + when, off, dur); activeSources.push(src); }
+                    }
+                });
+            }); animate();
+        }
+
+        function stopPlaybackFull() { isPlaying = false; activeSources.forEach(s => s.stop()); activeSources =[]; cancelAnimationFrame(rafId); playHeadTime = 0; updatePlayheadUI(); timelineScroll.scrollLeft = 0; document.getElementById('icon-play').classList.remove('hidden'); document.getElementById('icon-pause').classList.add('hidden'); }
+        function reloadPlayback() { if(!isPlaying) return; activeSources.forEach(s => s.stop()); activeSources =[]; startPlayback(); }
+        function togglePlayback() { isPlaying ? stopPlaybackFull() : startPlayback(); }
+
+        function animate() {
+            if(!isPlaying) return; playHeadTime += (audioCtx.currentTime - playStartTime); playStartTime = audioCtx.currentTime;
+            let maxDuration = 0; tracks.forEach(t => t.clips.forEach(c => { const end = c.start + c.duration; if(end > maxDuration) maxDuration = end; }));
+            if(maxDuration > 0 && playHeadTime >= maxDuration + 0.5) { if(loopEnabled) { playHeadTime = 0; playStartTime = audioCtx.currentTime; reloadPlayback(); } else { stopPlaybackFull(); return; } }
+            updatePlayheadUI(); if(playHeadTime * pxPerSec > timelineScroll.scrollLeft + timelineScroll.clientWidth) timelineScroll.scrollLeft = (playHeadTime * pxPerSec) - 50;
+            rafId = requestAnimationFrame(animate);
+        }
+
+        // --- HARDWARE ACCELERATED WAVEFORM DRAWING ---
+        function drawWaveform(canvas, clip) {
+            if(!clip.buffer) return; const w = canvas.offsetWidth; if(w === 0) return requestAnimationFrame(() => drawWaveform(canvas, clip)); 
+            const h = canvas.offsetHeight; canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d', { alpha: false });
+            
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0,0,w,h);
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            if (clip.selected) { grad.addColorStop(0, '#bae6fd'); grad.addColorStop(0.5, '#38bdf8'); grad.addColorStop(1, '#0284c7'); } 
+            else { grad.addColorStop(0, '#94a3b8'); grad.addColorStop(0.5, '#64748b'); grad.addColorStop(1, '#334155'); }
+            
+            ctx.lineWidth = 1; ctx.strokeStyle = grad;
+            const data = clip.buffer.getChannelData(0); const step = Math.ceil( (clip.duration * clip.buffer.sampleRate) / w ); const amp = h / 2;
+            
+            ctx.beginPath(); ctx.moveTo(0, amp);
+            for(let i=0; i<w; i++) {
+                let min=1.0, max=-1.0;
+                for(let j=0; j<step; j+=15) { 
+                    const idx = Math.floor(clip.offset * clip.buffer.sampleRate) + i*step + j; 
+                    if(idx < data.length) { const datum = data[idx]; if(datum < min) min = datum; if(datum > max) max = datum; } 
+                }
+                ctx.moveTo(i, (1+min)*amp); ctx.lineTo(i, (1+max)*amp);
+            }
+            ctx.stroke(); 
+        }
+
+        // --- UI RENDERING ---
+        function renderTracks() {
+            tracksContainer.innerHTML = ''; trackHeaders.innerHTML = ''; let maxTime = 0;
+            tracks.forEach(t => {
+                const h = document.createElement('div'); h.className = "h-32 border-b border-slate-800 bg-[#0f172a] flex flex-col p-2 md:p-3 shrink-0 box-border group transition hover:bg-slate-800";
+                h.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <input type="text" value="${t.name}" class="bg-transparent text-sky-400 font-bold text-xs w-16 md:w-20 outline-none truncate" onchange="tracks.find(x=>x.id=='${t.id}').name=this.value; saveState()">
+                        <div class="flex gap-1">
+                            <button onclick="removeTrack('${t.id}')" class="text-[10px] px-1.5 py-0.5 rounded border border-red-900/50 text-red-500 hover:bg-red-500 hover:text-white transition hidden md:block" title="Delete Track"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                            <button onclick="toggleFXPanel('${t.id}')" class="text-[10px] px-2 py-0.5 rounded border border-slate-600 hover:bg-sky-600 hover:border-sky-500 hover:text-white transition font-bold ${currentFXTrackId===t.id ? 'bg-sky-600 text-white border-sky-500' : 'text-slate-400'}">FX</button>
+                        </div>
+                    </div>
+                    <div class="flex gap-1 mb-2">
+                        <button onclick="toggleMute('${t.id}')" class="flex-1 h-6 rounded text-[9px] font-bold border ${t.muted?'bg-red-500/20 text-red-400 border-red-500/50':'border-slate-700 text-slate-400 hover:bg-slate-700'}">MUTE</button>
+                        <button onclick="toggleSolo('${t.id}')" class="flex-1 h-6 rounded text-[9px] font-bold border ${t.solo?'bg-yellow-500/20 text-yellow-400 border-yellow-500/50':'border-slate-700 text-slate-400 hover:bg-slate-700'}">SOLO</button>
+                    </div>
+                    <div class="flex items-center gap-2 mb-1"><span class="text-[9px] text-slate-500 w-3">Vol</span><input type="range" min="0" max="1.5" step="0.05" value="${t.vol}" class="flex-1" oninput="setVol('${t.id}', this.value)"></div>
+                    <div class="flex items-center gap-2"><span class="text-[9px] text-slate-500 w-3">Pan</span><input type="range" min="-1" max="1" step="0.1" value="${t.pan}" class="flex-1" oninput="setPan('${t.id}', this.value)"></div>
+                `; trackHeaders.appendChild(h);
+
+                const lane = document.createElement('div'); lane.className = "h-32 border-b border-slate-800/50 relative w-full bg-[#0b1120] hover:bg-slate-900/50 transition";
+                t.clips.forEach(c => {
+                    const el = document.createElement('div'); el.className = `clip ${c.selected ? 'selected' : ''} ${!c.buffer ? 'missing' : ''}`;
+                    el.style.left = (c.start * pxPerSec) + 'px'; el.style.width = (c.duration * pxPerSec) + 'px';
+                    if(c.buffer) { const canvas = document.createElement('canvas'); canvas.className = "w-full h-full pointer-events-none"; el.appendChild(canvas); requestAnimationFrame(() => drawWaveform(canvas, c)); } 
+                    else el.innerHTML = `<span class="text-[9px] text-red-300 p-1 font-bold">Offline: ${c.sourceName||'File'}</span>`;
+                    lane.appendChild(el); addInteraction(el, t, c); maxTime = Math.max(maxTime, c.start + c.duration);
+                }); tracksContainer.appendChild(lane);
+            });
+            const contentWidth = Math.max(timelineScroll.clientWidth, (maxTime * pxPerSec) + 200);
+            timelineContent.style.width = contentWidth + 'px'; rulerCanvas.width = contentWidth; drawRuler(); 
+            if(tracks.length > 0) document.getElementById('empty-state').style.display = 'none';
+        }
+
+        function drawRuler() {
+            const cvs = rulerCanvas, w = document.getElementById('ruler-container').clientWidth; cvs.width = w; cvs.height = 32; const ctx = cvs.getContext('2d', {alpha:false}); 
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,w,32); ctx.fillStyle = '#64748b'; ctx.font = 'bold 10px sans-serif';
+            const start = timelineScroll.scrollLeft / pxPerSec; const step = pxPerSec > 20 ? 1 : 5;
+            for(let t=Math.floor(start); t<(start + w/pxPerSec); t+=step) { const x = (t * pxPerSec) - timelineScroll.scrollLeft; ctx.fillRect(x, 24, 1, 8); ctx.fillText(`${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`, x+4, 20); }
+        }
+
+        function updatePlayheadUI() {
+            const pos = (playHeadTime * pxPerSec) - timelineScroll.scrollLeft; 
+            playheadLine.style.transform = `translate3d(${playHeadTime * pxPerSec}px, 0, 0)`; 
+            playheadHandle.style.transform = `translate3d(${pos}px, 0, 0)`;
+            const m = Math.floor(playHeadTime/60), s = Math.floor(playHeadTime%60), ms = Math.floor((playHeadTime%1)*100); timeDisplay.innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms.toString().padStart(2,'0')}`;
+        }
+
+        // --- FX PANEL LOGIC ---
+        function toggleFXPanel(trackId) { if(!trackId || currentFXTrackId === trackId) { fxPanel.classList.add('translate-x-full'); currentFXTrackId = null; renderTracks(); return; } currentFXTrackId = trackId; fxPanel.classList.remove('translate-x-full'); renderFXPanel(trackId); renderTracks(); }
+        function toggleTrackFXBypass() { if(!currentFXTrackId) return; const t = tracks.find(x => x.id === currentFXTrackId); t.fxBypass = !t.fxBypass; renderFXPanel(currentFXTrackId); if(isPlaying) reloadPlayback(); }
+        
+        function updateFXParam(trackId, module, param, val) {
+            const t = tracks.find(x => x.id === trackId); if(module === 'pitch') t.fx.pitch = parseFloat(val); else t.fx[module][param] = parseFloat(val);
+            const display = document.getElementById(`val-${module}-${param}`); if(display) display.innerText = val;
+            if(isPlaying) { if(module === 'pitch' || module === 'ringMod' || module === 'vibrato') reloadPlayback(); else updateLiveParams(trackId); }
+        }
+        function toggleFXModule(trackId, module) { const t = tracks.find(x => x.id === trackId); t.fx[module].on = !t.fx[module].on; renderFXPanel(trackId); if(isPlaying) reloadPlayback(); }
+        
+        function setVocalRemoveMode(trackId, mode) { 
+            const t = tracks.find(x => x.id === trackId); 
+            const cloudModels = ['spleeter', 'demucs', 'demucs6', 'uvr5_mdx23c', 'uvr5_bs_roformer', 'meta_sam'];
+            if (cloudModels.includes(mode)) {
+                // Trigger modal for cloud AI processing confirmation
+                document.getElementById('ai-mode-input').value = mode;
+                
+                const promptContainer = document.getElementById('meta-sam-prompt-container');
+                if (mode === 'meta_sam') {
+                    promptContainer.classList.remove('hidden');
+                } else {
+                    promptContainer.classList.add('hidden');
+                }
+
+                document.getElementById('ai-modal').classList.remove('hidden');
+                t.fx.vocalRemove.mode = 'off'; // Revert visual select state until confirmed
+                renderFXPanel(trackId);
+                return;
+            }
+            
+            t.fx.vocalRemove.mode = mode; 
+            renderFXPanel(trackId); 
+            
+            if(mode==='pro_local') processAdvancedVocalRemoval(trackId, mode); 
+            else if(isPlaying) reloadPlayback(); 
+        }
+
+        function togglePresetGroup(name) { activePresetGroup = (activePresetGroup === name) ? null : name; renderFXPanel(currentFXTrackId); }
+
+        function renderFXPanel(trackId) {
+            const t = tracks.find(x => x.id === trackId); const container = document.getElementById('fx-container'); const powerBtn = document.getElementById('fx-power-btn');
+            document.getElementById('fx-track-name').innerText = t.name; powerBtn.innerText = t.fxBypass ? "Bypassed" : "Active"; powerBtn.className = `text-[10px] uppercase font-bold px-3 py-1.5 rounded ${t.fxBypass ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`;
+            container.innerHTML = '';
+            
+            if(t.fxBypass) { container.innerHTML = `<div class="text-center text-slate-500 mt-10 text-xs font-bold">Effects are bypassed</div>`; return; }
+
+            const renderSlider = (mod, param, label, min, max, step, val) => `
+                <div class="fx-slider-row">
+                    <span class="text-[10px] text-slate-400 w-12 shrink-0 font-medium">${label}</span>
+                    <input type="range" class="flex-1" min="${min}" max="${max}" step="${step}" value="${val}" oninput="updateFXParam('${trackId}', '${mod}', '${param}', this.value)" onchange="saveState()">
+                    <span class="fx-val" id="val-${mod}-${param}">${val}</span>
+                </div>`;
+
+            // VOCAL REMOVAL MULTI-TIER
+            container.innerHTML += `
+                <div class="fx-group border-l-4 border-l-yellow-500">
+                     <div class="fx-group-header mb-2"><span class="fx-label text-yellow-500">Stem / Vocal Isolation</span></div>
+                     <select class="w-full bg-[#0f172a] text-xs text-slate-300 border border-slate-700 rounded p-1 mb-2 outline-none cursor-pointer" onchange="setVocalRemoveMode('${trackId}', this.value)">
+                        <option value="off" ${t.fx.vocalRemove.mode==='off'?'selected':''}>Off (Original Audio)</option>
+                        <option value="quick" ${t.fx.vocalRemove.mode==='quick'?'selected':''}>Quick Mode (Local DSP)</option>
+                        <option value="pro_local" ${t.fx.vocalRemove.mode==='pro_local'?'selected':''}>Pro Spectral (Local Math)</option>
+                        <option value="spleeter" ${t.fx.vocalRemove.mode==='spleeter'?'selected':''}>Fast 4-Stem (Spleeter)</option>
+                        <option value="demucs" ${t.fx.vocalRemove.mode==='demucs'?'selected':''}>HQ 4-Stem (Demucs v4)</option>
+                        <option value="demucs6" ${t.fx.vocalRemove.mode==='demucs6'?'selected':''}>Pro 6-Stem (Demucs v4)</option>
+                        <option value="uvr5_mdx23c" ${t.fx.vocalRemove.mode==='uvr5_mdx23c'?'selected':''}>Clean Vocals (UVR5 MDX23C)</option>
+                        <option value="uvr5_bs_roformer" ${t.fx.vocalRemove.mode==='uvr5_bs_roformer'?'selected':''}>Ultra Vocals (UVR5 BS-Roformer)</option>
+                        <option value="meta_sam" ${t.fx.vocalRemove.mode==='meta_sam'?'selected':''}>Prompt Based (Meta SAM)</option>
+                     </select>
+                </div>`;
+
+            // CLOUD ENHANCE
+            container.innerHTML += `
+                <div class="fx-group border-l-4 border-l-green-500">
+                     <div class="fx-group-header mb-2"><span class="fx-label text-green-500">AI Enhancement</span></div>
+                     <button onclick="enhanceTrackCloud('${trackId}')" class="w-full bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white border border-green-500/50 rounded py-1.5 text-xs font-bold transition">Denoise & Normalize (Cloud)</button>
+                </div>`;
+
+            container.innerHTML += `<div class="fx-group border-l-4 border-l-purple-500"><div class="fx-group-header"><span class="fx-label text-purple-400">Pitch / Speed</span></div>${renderSlider('pitch', null, 'Rate', 0.5, 2.0, 0.05, t.fx.pitch)}</div>`;
+            container.innerHTML += `<div class="fx-group border-l-4 border-l-blue-500"><div class="fx-group-header"><span class="fx-label text-blue-400">Equalizer</span><div class="toggle-switch ${t.fx.eq.on?'on':''}" onclick="toggleFXModule('${trackId}','eq')"></div></div><div class="${t.fx.eq.on?'':'opacity-50 pointer-events-none'}">${renderSlider('eq', 'low', 'Low', -20, 20, 1, t.fx.eq.low)}${renderSlider('eq', 'mid', 'Mid', -20, 20, 1, t.fx.eq.mid)}${renderSlider('eq', 'high', 'High', -20, 20, 1, t.fx.eq.high)}</div></div>`;
+            container.innerHTML += `<div class="fx-group border-l-4 border-l-pink-500"><div class="fx-group-header"><span class="fx-label text-pink-400">Compressor</span><div class="toggle-switch ${t.fx.compressor.on?'on':''}" onclick="toggleFXModule('${trackId}','compressor')"></div></div><div class="${t.fx.compressor.on?'':'opacity-50 pointer-events-none'}">${renderSlider('compressor', 'threshold', 'Thresh', -60, 0, 1, t.fx.compressor.threshold)}${renderSlider('compressor', 'ratio', 'Ratio', 1, 20, 1, t.fx.compressor.ratio)}</div></div>`;
+            container.innerHTML += `<div class="fx-group border-l-4 border-l-teal-500"><div class="fx-group-header"><span class="fx-label text-teal-400">Space & Echo</span></div><div class="mb-2"><div class="flex justify-between items-center mb-1"><span class="text-[9px] font-bold text-slate-500">REVERB</span> <div class="w-3 h-3 rounded-full ${t.fx.reverb.on?'bg-teal-500':'bg-slate-700'} cursor-pointer" onclick="toggleFXModule('${trackId}','reverb')"></div></div><div class="${t.fx.reverb.on?'':'opacity-50 pointer-events-none'}">${renderSlider('reverb', 'mix', 'Mix', 0, 1, 0.05, t.fx.reverb.mix)}</div></div><div><div class="flex justify-between items-center mb-1"><span class="text-[9px] font-bold text-slate-500">DELAY</span> <div class="w-3 h-3 rounded-full ${t.fx.delay.on?'bg-teal-500':'bg-slate-700'} cursor-pointer" onclick="toggleFXModule('${trackId}','delay')"></div></div><div class="${t.fx.delay.on?'':'opacity-50 pointer-events-none'}">${renderSlider('delay', 'time', 'Time', 0, 1, 0.05, t.fx.delay.time)}${renderSlider('delay', 'mix', 'Mix', 0, 1, 0.05, t.fx.delay.mix)}</div></div></div>`;
+
+            // PRESETS ACCORDION
+            container.innerHTML += `<div class="preset-section-title">PRO PRESETS</div>`;
+            
+            PRESET_GROUPS.forEach(group => {
+                const isActive = activePresetGroup === group.name;
+                container.innerHTML += `
+                    <div>
+                        <div onclick="togglePresetGroup('${group.name}')" class="accordion-header ${isActive ? 'active' : ''}">
+                            ${group.name}
+                            <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </div>
+                        <div class="${isActive ? 'accordion-body' : 'hidden'}">
+                            ${group.items.map(p => `<button onclick="applyPreset('${trackId}','${p}')" class="fx-btn ${t.fx.preset===p?'active':''}">${p}</button>`).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // --- RENDER TRACK HELPER FOR API ---
+        async function renderTrackToBuffer(track) {
+            if(track.clips.length === 0) return null;
+            const len = Math.max(...track.clips.map(c => c.start + c.duration));
+            const offCtx = new OfflineAudioContext(2, len * audioCtx.sampleRate, audioCtx.sampleRate);
+            track.clips.forEach(c => {
+                if(!c.buffer) return;
+                const src = offCtx.createBufferSource();
+                src.buffer = c.buffer;
+                src.connect(offCtx.destination);
+                src.start(c.start, c.offset, c.duration);
+            });
+            return await offCtx.startRendering();
+        }
+
+        // --- CLOUD AI & VOCAL REMOVAL ---
+        function cancelCloudAI() {
+            document.getElementById('ai-modal').classList.add('hidden');
+        }
+
+        function confirmCloudAI() {
+            document.getElementById('ai-modal').classList.add('hidden');
+            const mode = document.getElementById('ai-mode-input').value;
+            processAdvancedVocalRemoval(currentFXTrackId, mode);
+        }
+
+        async function processAdvancedVocalRemoval(trackId, mode) {
+            const t = tracks.find(x => x.id === trackId); if(!t || t.clips.length===0) return;
+            
+            if(mode === 'pro_local') {
+                overlayText.innerText = "Local Spectral Processing...";
+                overlaySub.innerText = "Analyzing phase and rendering offline channels...";
+                overlay.classList.remove('hidden');
+                
+                await new Promise(r=>setTimeout(r, 100)); // allow UI update
+
+                for(let i=0; i<t.clips.length; i++) {
+                    const clip = t.clips[i];
+                    if(!clip.buffer) continue;
+                    
+                    const sr = clip.buffer.sampleRate;
+                    const len = clip.buffer.length;
+                    const offCtx = new OfflineAudioContext(2, len, sr);
+                    const src = offCtx.createBufferSource();
+                    src.buffer = clip.buffer;
+
+                    const splitter = offCtx.createChannelSplitter(2);
+                    src.connect(splitter);
+
+                    const gainL = offCtx.createGain(); gainL.gain.value = 0.5;
+                    const gainR = offCtx.createGain(); gainR.gain.value = 0.5;
+                    splitter.connect(gainL, 0); splitter.connect(gainR, 1);
+
+                    const mid = offCtx.createGain(); gainL.connect(mid); gainR.connect(mid);
+                    const side = offCtx.createGain(); const invR = offCtx.createGain(); invR.gain.value = -1;
+                    gainL.connect(side); gainR.connect(invR); invR.connect(side);
+
+                    const midBass = offCtx.createBiquadFilter(); midBass.type = "lowpass"; midBass.frequency.value = 150;
+                    const midTreble = offCtx.createBiquadFilter(); midTreble.type = "highpass"; midTreble.frequency.value = 5000;
+                    mid.connect(midBass); mid.connect(midTreble);
+                    const newMid = offCtx.createGain(); midBass.connect(newMid); midTreble.connect(newMid);
+
+                    const outL = offCtx.createGain(); const outR = offCtx.createGain();
+                    newMid.connect(outL); side.connect(outL);
+                    const invSide = offCtx.createGain(); invSide.gain.value = -1; side.connect(invSide);
+                    newMid.connect(outR); invSide.connect(outR);
+
+                    const merger = offCtx.createChannelMerger(2);
+                    outL.connect(merger, 0, 0); outR.connect(merger, 0, 1);
+                    
+                    const makeup = offCtx.createGain(); makeup.gain.value = 1.6;
+                    merger.connect(makeup); makeup.connect(offCtx.destination);
+                    
+                    src.start(0);
+                    t.clips[i].buffer = await offCtx.startRendering();
+                }
+                
+                overlay.classList.add('hidden');
+                renderTracks(); saveState(); if(isPlaying) reloadPlayback();
+            } 
+            else if(['spleeter', 'demucs', 'demucs6', 'uvr5_mdx23c', 'uvr5_bs_roformer', 'meta_sam'].includes(mode)) {
+                // CLOUD API PROCESSING
+                let title = "Cloud AI Processing...";
+                if (mode.startsWith('uvr5')) title = "UVR5 Neural Vocals...";
+                if (mode === 'meta_sam') title = "Meta SAM Separation...";
+                if (mode.startsWith('demucs')) title = "Demucs Isolation...";
+                
+                overlayText.innerText = title;
+                overlaySub.innerText = "Analyzing tracks with advanced neural models...";
+                overlay.classList.remove('hidden');
+
+                try {
+                    const buf = await renderTrackToBuffer(t);
+                    if(!buf) { overlay.classList.add('hidden'); return; }
+                    
+                    const wavBlob = bufferToWav(buf);
+                    
+                    // 1. Upload
+                    let fd = new FormData();
+                    fd.append('file', wavBlob, 'track.wav');
+                    let uploadRes = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd });
+                    let uploadData = await uploadRes.json();
+                    
+                    // 2. Request Split
+                    let splitForm = new FormData();
+                    splitForm.append("file_id", uploadData.file_id);
+                    splitForm.append("model", mode);
+                    splitForm.append("stems", mode === 'demucs6' ? 6 : 4);
+                    
+                    if (mode === 'meta_sam') {
+                        splitForm.append("prompt", document.getElementById('ai-prompt-input').value);
+                    }
+
+                    let splitRes = await fetch(`${API_BASE}/api/split`, { method: "POST", body: splitForm });
+                    let splitData = await splitRes.json();
+
+                    // 3. Download the separated Stems
+                    for (const[stemName, urlPath] of Object.entries(splitData.stems)) {
+                        const audioRes = await fetch(API_BASE + urlPath);
+                        const arrayBuffer = await audioRes.arrayBuffer();
+                        const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                        
+                        // Add returned stems to the timeline
+                        tracks.push(createTrackModel(`${t.name} - ${stemName}`, decodedBuffer, stemName));
+                    }
+                    
+                    t.muted = true; // Mute the original track
+                    t.fx.vocalRemove.mode = mode; // Visually update the state
+                    
+                } catch (e) {
+                    console.error(e);
+                    alert("Cloud AI Processing failed. Is your Python backend running at " + API_BASE + "?");
+                    t.fx.vocalRemove.mode = 'off';
+                }
+
+                overlay.classList.add('hidden');
+                renderTracks(); 
+                if(currentFXTrackId) renderFXPanel(currentFXTrackId);
+                saveState(); 
+                if(isPlaying) reloadPlayback();
+            }
+        }
+
+        // --- CLOUD AI AUDIO ENHANCE ---
+        async function enhanceTrackCloud(trackId) {
+            const t = tracks.find(x => x.id === trackId); if(!t) return;
+            
+            overlayText.innerText = "Cloud AI Enhancement...";
+            overlaySub.innerText = "Running Spectral Denoise & Normalization on Server...";
+            overlay.classList.remove('hidden');
+            
+            try {
+                const buf = await renderTrackToBuffer(t);
+                const blob = bufferToWav(buf);
+                
+                let fd = new FormData(); fd.append('file', blob, 'track.wav');
+                let upRes = await fetch(`${API_BASE}/api/upload`, {method:'POST', body:fd});
+                let upData = await upRes.json();
+                
+                let enhFd = new FormData(); 
+                enhFd.append('file_id', upData.file_id);
+                enhFd.append('reduce_noise', 'true'); 
+                enhFd.append('normalize', 'true');
+                
+                let enhRes = await fetch(`${API_BASE}/api/enhance`, {method:'POST', body:enhFd});
+                let enhData = await enhRes.json();
+                
+                let audioRes = await fetch(API_BASE + enhData.url);
+                let arrayBuf = await audioRes.arrayBuffer();
+                let decoded = await audioCtx.decodeAudioData(arrayBuf);
+                
+                // Replace track's clips with the new single enhanced clip
+                t.clips =[{ id: 'c'+Date.now(), buffer: decoded, start: 0, offset: 0, duration: decoded.duration, selected: false, sourceName: t.name+'_Enhanced' }];
+                renderTracks(); saveState(); if(isPlaying) reloadPlayback();
+                
+            } catch(e) {
+                console.error(e);
+                alert("Cloud Enhancement failed. Make sure the Python API is running.");
+            }
+            overlay.classList.add('hidden');
+        }
+
+        function applyPreset(trackId, name) {
+            const t = tracks.find(x => x.id === trackId); t.fx.preset = name; t.fx.pitch = 1.0;
+            t.fx.eq.on = false; t.fx.compressor.on = false; t.fx.reverb.on = false; t.fx.delay.on = false; t.fx.distortion.on = false; t.fx.filter.on = false; t.fx.ringMod.on = false; t.fx.vibrato.on = false; t.fx.vocalRemove.mode = 'off';
+
+            if(name === 'Equalizer') t.fx.eq.on = true; else if(name === 'Reverb') t.fx.reverb.on = true; else if(name === 'Delay') t.fx.delay.on = true; else if(name === 'Compressor') t.fx.compressor.on = true;
+            else if(name === 'Karaoke (Vocal Remover)') { t.fx.vocalRemove.mode = 'quick'; }
+            else if(FX_PRESETS[name]) {
+                const p = FX_PRESETS[name];
+                if(p.eq) Object.assign(t.fx.eq, p.eq); if(p.compressor) Object.assign(t.fx.compressor, p.compressor); if(p.delay) Object.assign(t.fx.delay, p.delay); if(p.reverb) Object.assign(t.fx.reverb, p.reverb); if(p.filter) Object.assign(t.fx.filter, p.filter); if(p.distortion) Object.assign(t.fx.distortion, p.distortion); if(p.ringMod) Object.assign(t.fx.ringMod, p.ringMod); if(p.vibrato) Object.assign(t.fx.vibrato, p.vibrato); if(p.pitch) t.fx.pitch = p.pitch;
+            }
+            renderFXPanel(trackId); if(isPlaying) reloadPlayback(); saveState();
+        }
+
+        // --- INTERACTION ---
+        function deselectAll() { tracks.forEach(t => t.clips.forEach(c => c.selected = false)); renderTracks(); }
+
+        function addInteraction(el, track, clip) {
+            el.onmousedown = e => {
+                e.stopPropagation();
+                if(activeTool === 'razor') { const rect = el.getBoundingClientRect(); const splitTime = (e.clientX - rect.left) / pxPerSec; splitClip(track, clip, splitTime); return; }
+                deselectAll(); clip.selected = true; el.classList.add('selected'); const startX = e.clientX, startT = clip.start;
+                const move = e => {
+                    let t = Math.max(0, startT + (e.clientX - startX) / pxPerSec);
+                    if(snapEnabled) {
+                        snapLine.style.display = 'none'; const targets =[0, playHeadTime, ...tracks.flatMap(t=>t.clips).filter(c=>c!==clip).flatMap(c=>[c.start, c.start+c.duration])]; let closest = null, minDiff = 10/pxPerSec;
+                        targets.forEach(tar => { if(Math.abs(t - tar) < minDiff) { closest = tar; minDiff = Math.abs(t - tar); } else if(Math.abs((t+clip.duration) - tar) < minDiff) { closest = tar - clip.duration; minDiff = Math.abs((t+clip.duration) - tar); } });
+                        if(closest !== null) { t = closest; snapLine.style.display = 'block'; snapLine.style.left = (t * pxPerSec) + 'px'; }
+                    }
+                    clip.start = t; el.style.left = (t * pxPerSec) + 'px';
+                };
+                const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); snapLine.style.display = 'none'; renderTracks(); saveState(); };
+                window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+            };
+        }
+
+        function splitClip(track, clip, relTime) { if(relTime <= 0 || relTime >= clip.duration) return; const newClip = { id: 'c'+Date.now(), buffer: clip.buffer, start: clip.start + relTime, offset: clip.offset + relTime, duration: clip.duration - relTime, selected: false, sourceName: clip.sourceName }; clip.duration = relTime; track.clips.push(newClip); renderTracks(); saveState(); }
+        function deleteSelected() { let changed = false; tracks.forEach(t => { const initialLen = t.clips.length; t.clips = t.clips.filter(c => !c.selected); if(t.clips.length !== initialLen) changed = true; }); if(changed) { renderTracks(); saveState(); } }
+        function removeTrack(trackId) { if(confirm("Delete this track?")) { tracks = tracks.filter(t => t.id !== trackId); if(activeTrackNodes[trackId]) delete activeTrackNodes[trackId]; if(currentFXTrackId === trackId) toggleFXPanel(null); renderTracks(); saveState(); } }
+        function setVol(id, val) { tracks.find(x=>x.id===id).vol = parseFloat(val); if(isPlaying) updateLiveParams(id); }
+        function setPan(id, val) { tracks.find(x=>x.id===id).pan = parseFloat(val); if(isPlaying) updateLiveParams(id); }
+        function toggleMute(id) { const t=tracks.find(x=>x.id===id); t.muted=!t.muted; renderTracks(); if(isPlaying) updateLiveParams(id); }
+        function toggleSolo(id) { const t=tracks.find(x=>x.id===id); t.solo=!t.solo; renderTracks(); if(isPlaying) reloadPlayback(); }
+        
+        function setTool(t) { activeTool=t; document.body.className=`bg-[#0b1120] text-slate-200 h-screen flex flex-col font-sans overflow-hidden tool-${t}`; 
+            document.getElementById('tool-move').className = t==='move'?'p-2 rounded bg-sky-600 text-white shadow-md':'p-2 rounded text-slate-400 hover:bg-slate-700';
+            document.getElementById('tool-razor').className = t==='razor'?'p-2 rounded bg-sky-600 text-white shadow-md':'p-2 rounded text-slate-400 hover:bg-slate-700';
+        }
+        function toggleLoop() { loopEnabled = !loopEnabled; document.getElementById('btn-loop').className = loopEnabled ? 'p-2 text-sky-400 border border-sky-500 rounded bg-sky-900/20 transition hidden sm:block' : 'p-2 text-slate-400 hover:text-white border border-transparent rounded transition hidden sm:block'; }
+        function changeZoom(delta) { pxPerSec = Math.max(5, Math.min(300, pxPerSec + delta)); renderTracks(); updatePlayheadUI(); }
+        function toggleSnap() { snapEnabled = !snapEnabled; document.getElementById('btn-snap').className = snapEnabled ? 'p-2 rounded text-yellow-400 border border-yellow-400' : 'p-2 rounded text-slate-400 border border-transparent'; }
+
+        // State & History
+        function saveState() { if(historyIndex < historyStack.length - 1) historyStack = historyStack.slice(0, historyIndex + 1); const state = JSON.stringify(tracks, (k,v) => k==='buffer'?undefined:v); historyStack.push(state); historyIndex++; document.getElementById('btn-undo').disabled = false; }
+        function performUndo() { if(historyIndex > 0) { historyIndex--; restoreState(historyStack[historyIndex]); } else document.getElementById('btn-undo').disabled = true; }
+        function performRedo() { if(historyIndex < historyStack.length - 1) { historyIndex++; restoreState(historyStack[historyIndex]); } }
+        function restoreState(json) {
+            const saved = JSON.parse(json);
+            tracks = saved.map(t => { const existing = tracks.find(x => x.id === t.id);
+                t.clips = t.clips.map(c => { let buf = null; if(existing) { const old = existing.clips.find(oc => oc.id === c.id); if(old) buf = old.buffer; } if(!buf && c.sourceName) { for(const tr of tracks) for(const cl of tr.clips) if(cl.sourceName === c.sourceName && cl.buffer) buf = cl.buffer; } c.buffer = buf; return c; }); return t;
+            }); renderTracks(); if(currentFXTrackId) renderFXPanel(currentFXTrackId);
+        }
+
+        // File loading wrapper
+        async function processFiles(files) {
+            if(audioCtx.state === 'suspended') await audioCtx.resume();
+            overlayText.innerText = "Decoding Audio..."; overlaySub.innerText = "Accelerated WebAssembly Processing"; overlay.classList.remove('hidden');
+            for(let f of Array.from(files)) {
+                if(!f.type.startsWith('audio/') && !f.name.endsWith('.ogg') && !f.name.endsWith('.mp3') && !f.name.endsWith('.wav')) continue;
+                try {
+                    const buf = await audioCtx.decodeAudioData(await f.arrayBuffer()); let relinked=false;
+                    tracks.forEach(t=>t.clips.forEach(c=>{ if(!c.buffer && c.sourceName===f.name) { c.buffer=buf; relinked=true; } }));
+                    if(!relinked) tracks.push(createTrackModel(f.name, buf, f.name));
+                } catch(e) { console.error("Error decoding", f.name, e); }
+            } renderTracks(); saveState(); overlay.classList.add('hidden');
+        }
+
+        document.getElementById('file-upload').addEventListener('change', async e => { await processFiles(e.target.files); e.target.value = ''; });
+
+        async function toggleRecord() {
+            if(isRecording) { if(this.recorder) this.recorder.stop(); isRecording = false; document.getElementById('btn-record').classList.remove('animate-pulse-red'); } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({audio:true}); this.recorder = new MediaRecorder(stream); this.chunks =[]; this.recorder.ondataavailable = e => this.chunks.push(e.data);
+                    this.recorder.onstop = async () => { const blob = new Blob(this.chunks, {type:'audio/ogg; codecs=opus'}); const buf = await audioCtx.decodeAudioData(await blob.arrayBuffer()); tracks.push(createTrackModel("Mic Recording", buf, "rec")); renderTracks(); saveState(); stream.getTracks().forEach(t=>t.stop()); };
+                    this.recorder.start(); isRecording = true; document.getElementById('btn-record').classList.add('animate-pulse-red');
+                } catch(e) { alert("Microphone access denied."); }
+            }
+        }
+
+        function openExportModal() { document.getElementById('export-modal').classList.remove('hidden'); }
+        
+        async function runExport() {
+            document.getElementById('export-modal').classList.add('hidden'); 
+            const len = Math.max(...tracks.flatMap(t=>t.clips).map(c=>c.start+c.duration));
+            if(len === 0 || tracks.length === 0) { alert("Nothing to export!"); return; }
+            
+            overlayText.innerText = "Rendering Mixdown..."; 
+            overlay.classList.remove('hidden'); await new Promise(r=>setTimeout(r,100)); 
+            
+            // 1. Render all tracks offline locally first
+            const sr = 44100; const offCtx = new OfflineAudioContext(2, len * sr, sr);
+            tracks.forEach(t => {
+                if(t.muted) return; const graph = createTrackGraph(offCtx, t, offCtx.destination);
+                t.clips.forEach(c => { if(!c.buffer) return; const src = offCtx.createBufferSource(); src.buffer = c.buffer; src.playbackRate.value = t.fx.pitch; src.connect(graph.input); src.start(c.start, c.offset, c.duration); });
+            });
+            const rendered = await offCtx.startRendering();
+            
+            // 2. Fetch Export Preferences
+            const processMode = document.getElementById('export-mode').value;
+            const format = document.getElementById('export-format').value; 
+            const titleInput = document.getElementById('export-title').value.trim() || 'Master';
+            
+            if (processMode === 'cloud') {
+                // CLOUD API EXPORT (Supports True FLAC / 24-bit WAV)
+                try {
+                    overlayText.innerText = "Cloud Exporting...";
+                    overlaySub.innerText = "Processing high-quality render on server...";
+                    
+                    const wavBlob = bufferToWav(rendered);
+                    let fd = new FormData(); fd.append('file', wavBlob, 'mixdown.wav');
+                    
+                    let res = await fetch(`${API_BASE}/api/upload`, {method:'POST', body:fd});
+                    let data = await res.json();
+                    
+                    let expFd = new FormData();
+                    expFd.append('file_id', data.file_id);
+                    expFd.append('target_format', format);
+                    expFd.append('target_filename', titleInput);
+                    
+                    let expRes = await fetch(`${API_BASE}/api/export`, {method:'POST', body:expFd});
+                    let expData = await expRes.json();
+                    
+                    // Trigger Download from API
+                    const a = document.createElement('a'); 
+                    a.href = API_BASE + expData.url; 
+                    a.download = `${titleInput}.${format}`; 
+                    a.click();
+                } catch(e) {
+                    console.error(e);
+                    alert("Cloud export failed. Check server connection.");
+                }
+            } else {
+                // LOCAL BROWSER EXPORT (LameJS / standard WAV)
+                if (format === 'flac') { alert("FLAC is only supported via the Cloud API mode."); overlay.classList.add('hidden'); return; }
+                const filename = `${titleInput}.${format}`;
+                let blob; if(format === 'mp3') blob = bufferToMp3(rendered); else blob = bufferToWav(rendered); 
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+            }
+            
+            overlay.classList.add('hidden');
+        }
+
+        // --- BUFFER CONVERTERS ---
+        function bufferToWav(b){const n=b.numberOfChannels,l=b.length*n*2+44,u=new ArrayBuffer(l),v=new DataView(u);let o=0;const w=s=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));o+=s.length};w('RIFF');v.setUint32(4,36+b.length*n*2,true);o+=4;w('WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,n,true);v.setUint32(24,b.sampleRate,true);v.setUint32(28,b.sampleRate*2*n,true);v.setUint16(32,n*2,true);v.setUint16(34,16,true);o=36;w('data');v.setUint32(40,b.length*n*2,true);o=44;for(let i=0;i<b.length;i++)for(let j=0;j<n;j++){let s=Math.max(-1,Math.min(1,b.getChannelData(j)[i]));s=s<0?s*0x8000:s*0x7FFF;v.setInt16(o,s,true);o+=2}return new Blob([u],{type:'audio/wav'})}
+        function bufferToMp3(buffer) {
+            if (typeof lamejs === 'undefined') return bufferToWav(buffer);
+            const mp3encoder = new lamejs.Mp3Encoder(buffer.numberOfChannels, buffer.sampleRate, 320); const mp3Data =[]; const left = buffer.getChannelData(0); const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
+            const floatToInt16 = (f32) => { const i16 = new Int16Array(f32.length); for (let i = 0; i < f32.length; i++) { let s = Math.max(-1, Math.min(1, f32[i])); i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF; } return i16; };
+            const left16 = floatToInt16(left); const right16 = floatToInt16(right);
+            for (let i = 0; i < left16.length; i += 1152) {
+                const lChunk = left16.subarray(i, i + 1152); const rChunk = right16.subarray(i, i + 1152); let mp3buf;
+                if (buffer.numberOfChannels === 2) mp3buf = mp3encoder.encodeBuffer(lChunk, rChunk); else mp3buf = mp3encoder.encodeBuffer(lChunk);
+                if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf));
+            }
+            const mp3buf = mp3encoder.flush(); if (mp3buf.length > 0) mp3Data.push(new Int8Array(mp3buf)); return new Blob(mp3Data, { type: 'audio/mp3' });
+        }
+        
+        function enterStudio() { const landing = document.getElementById('landing-page'); landing.classList.add('animate-fade-out'); if(audioCtx.state === 'suspended') audioCtx.resume(); setTimeout(() => { landing.style.display = 'none'; }, 500); }
+
+        // Init
+        new ResizeObserver(drawRuler).observe(document.getElementById('ruler-container')); timelineScroll.onscroll = () => { drawRuler(); updatePlayheadUI(); document.getElementById('sidebar-container').scrollTop = timelineScroll.scrollTop; };
+        const rC = document.getElementById('ruler-container');
+        rC.onmousedown = e => { const updateHead = (ev) => { playHeadTime = Math.max(0, (ev.clientX - rC.getBoundingClientRect().left + timelineScroll.scrollLeft) / pxPerSec); updatePlayheadUI(); }; updateHead(e); const up = () => { window.removeEventListener('mousemove', updateHead); window.removeEventListener('mouseup', up); }; window.addEventListener('mousemove', updateHead); window.addEventListener('mouseup', up); };
+        window.onkeydown = e => { if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return; if((e.ctrlKey||e.metaKey)&&e.key==='z'){ e.preventDefault(); performUndo(); } else if((e.ctrlKey||e.metaKey)&&e.key==='y'){ e.preventDefault(); performRedo(); } else if(e.key===' '){ e.preventDefault(); togglePlayback(); } else if(e.key==='Delete'){ e.preventDefault(); deleteSelected(); } else if(e.key.toLowerCase()==='c') setTool('razor'); else if(e.key.toLowerCase()==='v') setTool('move'); };
+    </script>
+</body>
+</html>
